@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YYMMDD查询系统 V1.0版（仅供参考，以文件为准）</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "微软雅黑", Arial, sans-serif;
+        }
+        body {
+            max-width: 1150px;
+            margin: 20px auto;
+            padding: 0 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+        .input-area {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        #dateInput {
+            flex: 1;
+            min-width: 200px;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            inputmode: numeric;
+            pattern: "\d{6}";
+        }
+        #projectType {
+            min-width: 120px;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            background-color: white;
+        }
+        #queryBtn {
+            padding: 12px 30px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s;
+        }
+        #queryBtn:hover {
+            background-color: #0056b3;
+        }
+        #queryBtn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .result-area {
+            margin-top: 20px;
+        }
+        .result-info {
+            margin-bottom: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+        #resultBox {
+            width: 100%;
+            min-height: 500px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.6;
+            overflow-y: auto;
+        }
+        .loading {
+            color: #007bff;
+        }
+        .success {
+            color: #28a745;
+        }
+        .error {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>YYMMDD查询系统 V1.0版（仅供参考，以文件为准）</h1>
+        
+        <div class="input-area">
+            <input type="text" id="dateInput" placeholder="请输入6位YYMMDD格式日期（如251212），并且选择好类别" maxlength="6">
+            <select id="projectType">
+                <option value="clsy">材料试验</option>
+                <option value="slcs">水利参数</option>
+                <option value="xcjc">现场检测</option>
+            </select>
+            <button id="queryBtn" onclick="queryData()">查询</button>
+        </div>
+        
+        <div class="result-area">
+            <div class="result-info" id="resultInfo"></div>
+            <textarea id="resultBox" readonly placeholder="查询结果将显示在这里..."></textarea>
+        </div>
+    </div>
+
+    <script>
+        const CF_FUNCTION_URL = "https://f8v3xdtd3qekz.cfc-execute.gz.baidubce.com/query";
+
+        const sheetNameMap = {
+            "clsy": "材料试验",
+            "slcs": "水利参数",
+            "xcjc": "现场检测"
+        };
+
+        async function queryData() {
+            const pureDateStr = document.getElementById('dateInput').value.trim();
+            const sheetCode = document.getElementById('projectType').value.trim();
+            const sheetName = sheetNameMap[sheetCode];
+            const queryBtn = document.getElementById('queryBtn');
+            const resultInfo = document.getElementById('resultInfo');
+            const resultBox = document.getElementById('resultBox');
+
+            if (!pureDateStr) {
+                resultInfo.className = "result-info error";
+                resultInfo.textContent = "错误：请输入6位纯数字日期（如251212）！";
+                resultBox.textContent = "";
+                return;
+            }
+            if (!/^\d{6}$/.test(pureDateStr)) {
+                resultInfo.className = "result-info error";
+                resultInfo.textContent = "错误：必须输入6位纯数字日期（如251212）！";
+                resultBox.textContent = "";
+                return;
+            }
+
+            const finalDateStr = pureDateStr + sheetCode;
+
+            queryBtn.disabled = true;
+            resultInfo.className = "result-info loading";
+            resultInfo.textContent = `查询中（工作表：${sheetName}）...请稍候`;
+            resultBox.textContent = "";
+
+            try {
+                const response = await fetch(CF_FUNCTION_URL, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Accept": "application/json"
+                    },
+                    body: `date=${encodeURIComponent(finalDateStr)}`
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP错误：${response.status} ${response.statusText}`);
+                }
+
+                const result = await response.json();
+
+                if (result.success) {
+                    resultInfo.className = "result-info success";
+                    resultInfo.textContent = `✅ 查询成功（${sheetName}）| 匹配记录数：${result["匹配记录数"]} | 提示：${result.msg}`;
+                    
+                    let resultText = "";
+                    if (result.results && result.results.length > 0) {
+                        result.results.forEach((item, index) => {
+                            if (!item.类别 && !item.分配 && !item.批准 && !item.审核 && !item.检测员) {
+                                return;
+                            }
+                            
+                            resultText += `== 类别：${item.类别 || "无"} = 第${index+1}条记录 ==\n`;
+                            
+                            let assignContent = item.分配 || "无";
+                            assignContent = assignContent.replace(/^\d+、/, "");
+                            resultText += `分配：${index+1}、${assignContent}\n`;
+                            
+                            const approve = item.批准 || "";
+                            const audit = item.审核 || "";
+                            const tester = item.检测员 || "";
+                            let infoLine = "";
+                            if (approve) infoLine += `批准：${approve.padEnd(8)}`;
+                            if (audit) infoLine += `审核：${audit.padEnd(10)}`;
+                            if (tester) infoLine += `检测员：${tester}`;
+                            if (infoLine) {
+                                resultText += infoLine + "\n";
+                            }
+                            
+                            resultText += "\n";
+                        });
+                    } else {
+                        resultText = `📭 工作表【${sheetName}】中暂无匹配的记录`;
+                    }
+                    resultBox.textContent = resultText.trimEnd();
+                } else {
+                    resultInfo.className = "result-info error";
+                    resultInfo.textContent = `❌ 查询失败（${sheetName}）| 提示：${result.msg}`;
+                    resultBox.textContent = "";
+                }
+
+            } catch (error) {
+                resultInfo.className = "result-info error";
+                resultInfo.textContent = `❌ 请求异常：${error.message}`;
+                resultBox.textContent = `错误详情：${error.stack || "未知错误"}`;
+            } finally {
+                queryBtn.disabled = false;
+            }
+        }
+
+        document.getElementById('dateInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                queryData();
+            }
+        });
+
+        document.getElementById('dateInput').addEventListener('input', function(e) {
+            this.value = this.value.replace(/[^\d]/g, '');
+            if (this.value.length > 6) {
+                this.value = this.value.substring(0, 6);
+            }
+        });
+    </script>
+</body>
+</html>
